@@ -1,16 +1,16 @@
 #include <Adafruit_NeoPixel.h>
 #include <OBD2UART.h>
 
-#define TEST
+//#define TEST
   
 #define LED_PIN 9
 #define BTN_BRIGHTER 2
 #define BTN_DIMMER 3
 
 const int mphPerLED = 2;
-const int tickCount = 6;
-uint8_t tickLEDs[tickCount] = {4,9,14,19,24,29};
-//uint8_t tickLEDs[tickCount] = {2,5,8,11,14,17,20,23,26,29};
+const int tickCount = 4;
+uint8_t majorTicks[tickCount] = {-1,9,19,29};
+uint8_t minorTicks[tickCount] = {4,13,14,24};
 
 int speedVar = 0;
 
@@ -30,17 +30,23 @@ struct color_t {
   }
 };
 
-color_t colorTick1(255,0,0,128);
-color_t colorTick2(255,128,0,128);
-color_t colorTick3(64,255,32,128);
-color_t colorTickSet1(255,16,8,16);
-color_t colorTickSet2(255,20,8,16);
-color_t colorTickSet3(255,20,8,16);
+color_t colorMajorTick1(255,0,255,128);
+color_t colorMajorTick2(64,255,32,128);
+color_t colorMajorTick3(255,0,0,128);
+color_t colorMinorTick3(255,255,255,128);
+color_t colorMinorTick1(255,255,255,128);
+color_t colorMinorTick2(255,255,255,128);
+color_t colorMajorTickSet1(255,20,8,64);
+color_t colorMajorTickSet2(255,20,8,64);
+color_t colorMajorTickSet3(255,20,8,64);
+color_t colorMinorTickSet1(255,20,8,64);
+color_t colorMinorTickSet2(255,20,8,64);
+color_t colorMinorTickSet3(255,20,8,64);
 color_t colorSet1(255,12,0,255);
 color_t colorSet2(255,12,0,255);
 color_t colorSet3(255,12,0,255);
-color_t colorSpecial(255,255,255,128);
-color_t colorSpecialSet(255,64,64,128);
+//color_t colorSpecial(255,128,0,128);
+//color_t colorSpecialSet(255,64,64,128);
 color_t colorOff(0,0,0,0);
 
 
@@ -50,10 +56,13 @@ int decDebounce = 0;
 
 
 void setup(){
+#ifdef TEST
   Serial.begin(38400);
+#endif
   ledStrip.begin();
   ledStrip.show();
-
+  
+  color_t colorSpecial(255,128,0,128);
   for(int i=0; i<10; i++){
       ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
   }
@@ -85,10 +94,12 @@ void setup(){
   attachInterrupt(digitalPinToInterrupt(BTN_DIMMER), decBrightness, FALLING);
   
   for(int i=0; i<ledStrip.numPixels(); i++){
-    if(i+1 == 20)
+    /*if(i+1 == 15)
       ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-    else if (isTick(i))
-      ledStrip.setPixelColor(i, applyBrightness(colorTick1));
+    else*/ if (isMajorTick(i))
+      ledStrip.setPixelColor(i, applyBrightness(colorMajorTick1));
+    else if (isMinorTick(i))
+      ledStrip.setPixelColor(i, applyBrightness(colorMinorTick1));
     else 
       ledStrip.setPixelColor(i, applyBrightness(colorOff));
   }
@@ -123,26 +134,32 @@ void setSpeed(int speed){
     if (i < speed){
       switch(level){
         case 0:
-          if(i+1 == 20)
+          /*if(i+1 == 15)
             ledStrip.setPixelColor(i, applyBrightness(colorSpecialSet));
-          else if(isTick(i))
-            ledStrip.setPixelColor(i, applyBrightness(colorTickSet1));
+          else */if(isMajorTick(i))
+            ledStrip.setPixelColor(i, applyBrightness(colorMajorTickSet1));
+          else if(isMinorTick(i))
+            ledStrip.setPixelColor(i, applyBrightness(colorMinorTickSet1));
           else
             ledStrip.setPixelColor(i, applyBrightness(colorSet1));
           break;
         case 1:
-          if(i+31 == 55)
+          /*if(i+31 == 55)
             ledStrip.setPixelColor(i, applyBrightness(colorSpecialSet));
-          else if(isTick(i))
-            ledStrip.setPixelColor(i, applyBrightness(colorTickSet2));
+          else*/ if(isMajorTick(i))
+            ledStrip.setPixelColor(i, applyBrightness(colorMajorTickSet2));
+          else if(isMinorTick(i))
+            ledStrip.setPixelColor(i, applyBrightness(colorMinorTickSet2));
           else
             ledStrip.setPixelColor(i, applyBrightness(colorSet2));
           break;
         case 2:
-          if(i+61 == 70)
+          /*if(i+61 == 70)
             ledStrip.setPixelColor(i, applyBrightness(colorSpecialSet));
-          else if(isTick(i))
-            ledStrip.setPixelColor(i, applyBrightness(colorTickSet3));
+          else*/ if(isMajorTick(i))
+            ledStrip.setPixelColor(i, applyBrightness(colorMajorTickSet3));
+          else if(isMinorTick(i))
+            ledStrip.setPixelColor(i, applyBrightness(colorMinorTickSet3));
           else
             ledStrip.setPixelColor(i, applyBrightness(colorSet3));
           break;
@@ -150,25 +167,47 @@ void setSpeed(int speed){
         
     }
     else{
-      if(isTick(i)){
+      if(isMajorTick(i)){
         switch(level){
           case 0:
-            if(i+1 == 20)
-              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-            else 
-              ledStrip.setPixelColor(i, applyBrightness(colorTick1));
+//            if(i+1 == 20)
+//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
+//            else 
+              ledStrip.setPixelColor(i, applyBrightness(colorMajorTick1));
             break;
           case 1:
-            if(i+31 == 55)
-              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-            else 
-              ledStrip.setPixelColor(i, applyBrightness(colorTick2));
+//            if(i+31 == 55)
+//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
+//            else 
+              ledStrip.setPixelColor(i, applyBrightness(colorMajorTick2));
             break;
           case 2:
-            if(i+61 == 70)
-              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-            else 
-              ledStrip.setPixelColor(i, applyBrightness(colorTick3));
+//            if(i+61 == 70)
+//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
+//            else 
+              ledStrip.setPixelColor(i, applyBrightness(colorMajorTick3));
+            break;
+        }
+      }
+      else if(isMinorTick(i)){
+        switch(level){
+          case 0:
+//            if(i+1 == 20)
+//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
+//            else 
+              ledStrip.setPixelColor(i, applyBrightness(colorMinorTick1));
+            break;
+          case 1:
+//            if(i+31 == 55)
+//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
+//            else 
+              ledStrip.setPixelColor(i, applyBrightness(colorMinorTick2));
+            break;
+          case 2:
+//            if(i+61 == 70)
+//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
+//            else 
+              ledStrip.setPixelColor(i, applyBrightness(colorMinorTick3));
             break;
         }
       }
@@ -178,21 +217,21 @@ void setSpeed(int speed){
       else{
         switch(level){
           case 0:
-            if(i+1 == 20)
-              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-            else 
+//            if(i+1 == 20)
+//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
+//            else 
               ledStrip.setPixelColor(i, applyBrightness(colorOff));
             break;
           case 1:
-            if(i+31 == 55)
-              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-            else 
+//            if(i+31 == 55)
+//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
+//            else 
               ledStrip.setPixelColor(i, applyBrightness(colorOff));
             break;
           case 2:
-            if(i+61 == 70)
-              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-            else 
+//            if(i+61 == 70)
+//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
+//            else 
               ledStrip.setPixelColor(i, applyBrightness(colorOff));
             break;
         }
@@ -203,12 +242,12 @@ void setSpeed(int speed){
 }
 
 uint32_t applyBrightness(color_t col){
-  float a = col.alpha/255.0 * brightness;
-  uint8_t r = col.red * a;
+  float k = col.alpha/255.0 * brightness;
+  uint8_t r = col.red * k;
 //  if(col.red > 0 && r == 0) r = 1;
-  uint8_t g = col.green * a;
+  uint8_t g = col.green * k;
 //  if(col.green > 0 && g == 0) g = 1;
-  uint8_t b = col.blue * a;
+  uint8_t b = col.blue * k;
 //  if(col.blue > 0 && b == 0) b = 1;
 
 //  Serial.print("r: "); Serial.print(r);
@@ -245,20 +284,31 @@ int getSpeedOBD(){
   return 0;
 }
 
-bool isTick(int led){
+bool isMajorTick(int led){
   for(int i=0; i<tickCount; i++){
-    if(led == tickLEDs[i]) return true;
+    if(led == majorTicks[i]) return true;
+  }
+  return false;
+}
+
+bool isMinorTick(int led){
+  for(int i=0; i<tickCount; i++){
+    if(led == minorTicks[i]) return true;
   }
   return false;
 }
 
 void incBrightness(){
-  brightness  = min(1, brightness*1.05);
-  Serial.print("inc-ing brightness to "); Serial.println(brightness);
+  brightness  = min(1, brightness*1.2);
+#ifdef TEST
+  Serial.print("inc-ing brightness to "); Serial.println(brightness, 5);
+#endif
 }
 
 void decBrightness(){
-  brightness  = max(0, brightness/1.05);
-  Serial.print("dec-ing brightness to "); Serial.println(brightness);
+  brightness  = max(0, brightness/1.2);
+#ifdef TEST
+  Serial.print("dec-ing brightness to "); Serial.println(brightness, 5);
+#endif
 }
 
