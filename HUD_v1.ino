@@ -1,4 +1,7 @@
 #include <Adafruit_NeoPixel.h>
+#include <OBD2UART.h>
+
+#define TEST
   
 #define LED_PIN 9
 #define BTN_BRIGHTER 2
@@ -11,6 +14,7 @@ uint8_t tickLEDs[tickCount] = {4,9,14,19,24,29};
 
 int speedVar = 0;
 
+COBD obd;
 Adafruit_NeoPixel ledStrip = Adafruit_NeoPixel(30, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 struct color_t {
@@ -26,25 +30,9 @@ struct color_t {
   }
 };
 
-////color_t colorTick1(255,0,128,128);
-//color_t colorTick1(255,64,32,128);
-//color_t colorTick2(255,64,32,128);
-////color_t colorTick3(0,255,128,128);
-//color_t colorTick3(255,64,32,128);
-//color_t colorTickSet1(255,255,128,255);
-//color_t colorTickSet2(255,255,128,255);
-//color_t colorTickSet3(255,255,128,255);
-//color_t colorSet1(255,0,0,255);
-//color_t colorSet2(255,255,0,255);
-//color_t colorSet3(0,255,0,255);
-//color_t colorOff(0,0,0,0);
-
 color_t colorTick1(255,0,0,128);
 color_t colorTick2(255,128,0,128);
 color_t colorTick3(64,255,32,128);
-//color_t colorTickSet1(255,255,128,64);
-//color_t colorTickSet2(255,255,128,64);
-//color_t colorTickSet3(255,255,128,64);
 color_t colorTickSet1(255,16,8,16);
 color_t colorTickSet2(255,20,8,16);
 color_t colorTickSet3(255,20,8,16);
@@ -62,17 +50,32 @@ int decDebounce = 0;
 
 
 void setup(){
-    Serial.begin(38400);
-    ledStrip.begin();
-    ledStrip.show();
+  Serial.begin(38400);
+  ledStrip.begin();
+  ledStrip.show();
 
-  for(int i=0; i<ledStrip.numPixels(); i++){
-      if(i+1 == 20)
-        ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-      else if (isTick(i))
-        ledStrip.setPixelColor(i, applyBrightness(colorTick1));
-    }
-    ledStrip.show();
+  for(int i=0; i<10; i++){
+      ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
+  }
+  ledStrip.show();
+
+#ifndef TEST
+  obd.begin();
+#endif
+  
+  for(int i=10; i<20; i++){
+      ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
+  }
+  ledStrip.show();
+
+#ifndef TEST
+  while (!obd.init());
+#endif
+  
+  for(int i=20; i<30; i++){
+      ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
+  }
+  ledStrip.show();
 
 
   pinMode(BTN_BRIGHTER, INPUT_PULLUP);
@@ -80,11 +83,26 @@ void setup(){
   delay(500);
   attachInterrupt(digitalPinToInterrupt(BTN_BRIGHTER), incBrightness, FALLING);
   attachInterrupt(digitalPinToInterrupt(BTN_DIMMER), decBrightness, FALLING);
+  
+  for(int i=0; i<ledStrip.numPixels(); i++){
+    if(i+1 == 20)
+      ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
+    else if (isTick(i))
+      ledStrip.setPixelColor(i, applyBrightness(colorTick1));
+    else 
+      ledStrip.setPixelColor(i, applyBrightness(colorOff));
+  }
+  ledStrip.show();
 }
 
 void loop() {
-//    setSpeed(speedVar);
-    int temp = getSpeed();
+  
+#ifdef TEST
+    int temp = getSpeedSerial();
+#else
+    int temp = getSpeedOBD() / 1.60934;
+#endif
+
     if(temp != 0){
       speedVar = temp;
     }
@@ -187,16 +205,22 @@ void setSpeed(int speed){
 uint32_t applyBrightness(color_t col){
   float a = col.alpha/255.0 * brightness;
   uint8_t r = col.red * a;
-  if(col.red > 0 && r ==0) r == 1;
+//  if(col.red > 0 && r == 0) r = 1;
   uint8_t g = col.green * a;
-  if(col.green > 0 && g ==0) g == 1;
+//  if(col.green > 0 && g == 0) g = 1;
   uint8_t b = col.blue * a;
-  if(col.blue > 0 && b ==0) b == 1;
+//  if(col.blue > 0 && b == 0) b = 1;
+
+//  Serial.print("r: "); Serial.print(r);
+//  Serial.print(", g: "); Serial.print(g);
+//  Serial.print(", b: "); Serial.print(b);
+//  Serial.println();
+  
   
   return ledStrip.Color(r, g, b);
 }
 
-int getSpeed(){
+int getSpeedSerial(){
   String str = "";
   while(Serial.available()){
     char c = Serial.read();
@@ -212,6 +236,15 @@ int getSpeed(){
   }
 }
 
+int getSpeedOBD(){
+  int val = 0;
+  if (obd.readPID(PID_SPEED, val)) {
+    // light on LED on Arduino board when the RPM exceeds 3000
+    return val;
+  }
+  return 0;
+}
+
 bool isTick(int led){
   for(int i=0; i<tickCount; i++){
     if(led == tickLEDs[i]) return true;
@@ -220,12 +253,12 @@ bool isTick(int led){
 }
 
 void incBrightness(){
-  brightness  = min(1, brightness+.02);
+  brightness  = min(1, brightness*1.05);
   Serial.print("inc-ing brightness to "); Serial.println(brightness);
 }
 
 void decBrightness(){
-  brightness  = max(0, brightness-.02);
+  brightness  = max(0, brightness/1.05);
   Serial.print("dec-ing brightness to "); Serial.println(brightness);
 }
 
