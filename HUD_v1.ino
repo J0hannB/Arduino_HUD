@@ -1,109 +1,91 @@
-#include <Adafruit_NeoPixel.h>
 #include <OBD2UART.h>
 
 //#define TEST
+
+#define DIGIT_1_PIN 6
+//#define DIGIT_2_PIN 8
+//#define DIGIT_3_PIN 9
+//#define DIGIT_4_PIN 12
+//
+//#define A_PIN 11 A2
+//#define B_PIN 7
+//#define C_PIN 4
+//#define D_PIN A2
+//#define E_PIN A1
+//#define F_PIN 10
+//#define G_PIN 5
+//#define DP_PIN A3
+
+#define DIGIT_1_PIN 6
+#define DIGIT_2_PIN 8
+#define DIGIT_3_PIN 9
+#define DIGIT_4_PIN 12
+
+#define A_PIN A2
+#define B_PIN 4
+#define C_PIN 7
+#define D_PIN 11
+#define E_PIN 10
+#define F_PIN A1
+#define G_PIN 5
+#define DP_PIN A3
+
   
-#define LED_PIN 9
+//#define LED_PIN 9
 #define BTN_BRIGHTER 2
 #define BTN_DIMMER 3
 
-const int mphPerLED = 2;
-const int tickCount = 4;
-uint8_t majorTicks[tickCount] = {-1,9,19,29};
-uint8_t minorTicks[tickCount] = {4,13,14,24};
-
-int speedVar = 0;
+int speedVar = 8888;
+float brightness = 0.1;
+bool waitingForData = false;
 
 COBD obd;
-Adafruit_NeoPixel ledStrip = Adafruit_NeoPixel(30, LED_PIN, NEO_GRB + NEO_KHZ800);
 
-struct color_t {
-  uint8_t red;
-  uint8_t green;
-  uint8_t blue;
-  uint8_t alpha;
-  color_t(uint8_t r, uint8_t g, uint8_t b, uint8_t a){
-    red = r;
-    green = g;
-    blue = b;
-    alpha = a;
-  }
-};
-
-color_t colorMajorTick1(255,0,255,128);
-color_t colorMajorTick2(64,255,32,128);
-color_t colorMajorTick3(255,0,0,128);
-color_t colorMinorTick3(255,255,255,128);
-color_t colorMinorTick1(255,255,255,128);
-color_t colorMinorTick2(255,255,255,128);
-color_t colorMajorTickSet1(255,20,8,64);
-color_t colorMajorTickSet2(255,20,8,64);
-color_t colorMajorTickSet3(255,20,8,64);
-color_t colorMinorTickSet1(255,20,8,64);
-color_t colorMinorTickSet2(255,20,8,64);
-color_t colorMinorTickSet3(255,20,8,64);
-color_t colorSet1(255,12,0,255);
-color_t colorSet2(255,12,0,255);
-color_t colorSet3(255,12,0,255);
-//color_t colorSpecial(255,128,0,128);
-//color_t colorSpecialSet(255,64,64,128);
-color_t colorOff(0,0,0,0);
-
-
-float brightness = 0.02;
-int incDebounce = 0;
-int decDebounce = 0;
 
 
 void setup(){
+  
 #ifdef TEST
   Serial.begin(38400);
 #endif
-  ledStrip.begin();
-  ledStrip.show();
+
+  pinMode(DIGIT_1_PIN, OUTPUT);
+  pinMode(DIGIT_2_PIN, OUTPUT);
+  pinMode(DIGIT_3_PIN, OUTPUT);
+  pinMode(DIGIT_4_PIN, OUTPUT);
+
+  pinMode(A_PIN, OUTPUT);
+  pinMode(B_PIN, OUTPUT);
+  pinMode(C_PIN, OUTPUT);
+  pinMode(D_PIN, OUTPUT);
+  pinMode(E_PIN, OUTPUT);
+  pinMode(F_PIN, OUTPUT);
+  pinMode(G_PIN, OUTPUT);
+  pinMode(DP_PIN, OUTPUT);
   
-  color_t colorSpecial(255,128,0,128);
-  for(int i=0; i<10; i++){
-      ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
+  for(int i=4000; i>0; i--){
+    displayDigit(0,0,false);
+    displayDigit(0,1,false);
+    displayDigit(0,2,false);
+    displayDigit(0,3,false);
   }
-  ledStrip.show();
+  resetDisplay();
 
 #ifndef TEST
   obd.begin();
 #endif
-  
-  for(int i=10; i<20; i++){
-      ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-  }
-  ledStrip.show();
-
+ 
 #ifndef TEST
   while (!obd.init());
 #endif
-  
-  for(int i=20; i<30; i++){
-      ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-  }
-  ledStrip.show();
-
 
   pinMode(BTN_BRIGHTER, INPUT_PULLUP);
   pinMode(BTN_DIMMER, INPUT_PULLUP);
   delay(500);
   attachInterrupt(digitalPinToInterrupt(BTN_BRIGHTER), incBrightness, FALLING);
   attachInterrupt(digitalPinToInterrupt(BTN_DIMMER), decBrightness, FALLING);
-  
-  for(int i=0; i<ledStrip.numPixels(); i++){
-    /*if(i+1 == 15)
-      ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-    else*/ if (isMajorTick(i))
-      ledStrip.setPixelColor(i, applyBrightness(colorMajorTick1));
-    else if (isMinorTick(i))
-      ledStrip.setPixelColor(i, applyBrightness(colorMinorTick1));
-    else 
-      ledStrip.setPixelColor(i, applyBrightness(colorOff));
-  }
-  ledStrip.show();
+
+ 
 }
 
 void loop() {
@@ -114,150 +96,191 @@ void loop() {
     int temp = getSpeedOBD() / 1.60934;
 #endif
 
-    if(temp != 0){
+    if(temp >= 0){
       speedVar = temp;
     }
     setSpeed(speedVar);
+    delayMicroseconds(150);
+    resetDisplay();
 
-    delay(200);
+    delayMicroseconds(100/brightness);
 }
 
 void setSpeed(int speed){
-//  Serial.print("Speed = "); Serial.print(speed);
-  int level = speed/30;
-//  Serial.print(", level = "); Serial.print(level);
-  speed %= 30;
-//  Serial.print(", ledCount = "); Serial.println(speed);
 
- 
-  for(int i=0; i<ledStrip.numPixels(); i++){
-    if (i < speed){
-      switch(level){
-        case 0:
-          /*if(i+1 == 15)
-            ledStrip.setPixelColor(i, applyBrightness(colorSpecialSet));
-          else */if(isMajorTick(i))
-            ledStrip.setPixelColor(i, applyBrightness(colorMajorTickSet1));
-          else if(isMinorTick(i))
-            ledStrip.setPixelColor(i, applyBrightness(colorMinorTickSet1));
-          else
-            ledStrip.setPixelColor(i, applyBrightness(colorSet1));
-          break;
-        case 1:
-          /*if(i+31 == 55)
-            ledStrip.setPixelColor(i, applyBrightness(colorSpecialSet));
-          else*/ if(isMajorTick(i))
-            ledStrip.setPixelColor(i, applyBrightness(colorMajorTickSet2));
-          else if(isMinorTick(i))
-            ledStrip.setPixelColor(i, applyBrightness(colorMinorTickSet2));
-          else
-            ledStrip.setPixelColor(i, applyBrightness(colorSet2));
-          break;
-        case 2:
-          /*if(i+61 == 70)
-            ledStrip.setPixelColor(i, applyBrightness(colorSpecialSet));
-          else*/ if(isMajorTick(i))
-            ledStrip.setPixelColor(i, applyBrightness(colorMajorTickSet3));
-          else if(isMinorTick(i))
-            ledStrip.setPixelColor(i, applyBrightness(colorMinorTickSet3));
-          else
-            ledStrip.setPixelColor(i, applyBrightness(colorSet3));
-          break;
-      }
-        
-    }
-    else{
-      if(isMajorTick(i)){
-        switch(level){
-          case 0:
-//            if(i+1 == 20)
-//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-//            else 
-              ledStrip.setPixelColor(i, applyBrightness(colorMajorTick1));
-            break;
-          case 1:
-//            if(i+31 == 55)
-//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-//            else 
-              ledStrip.setPixelColor(i, applyBrightness(colorMajorTick2));
-            break;
-          case 2:
-//            if(i+61 == 70)
-//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-//            else 
-              ledStrip.setPixelColor(i, applyBrightness(colorMajorTick3));
-            break;
-        }
-      }
-      else if(isMinorTick(i)){
-        switch(level){
-          case 0:
-//            if(i+1 == 20)
-//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-//            else 
-              ledStrip.setPixelColor(i, applyBrightness(colorMinorTick1));
-            break;
-          case 1:
-//            if(i+31 == 55)
-//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-//            else 
-              ledStrip.setPixelColor(i, applyBrightness(colorMinorTick2));
-            break;
-          case 2:
-//            if(i+61 == 70)
-//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-//            else 
-              ledStrip.setPixelColor(i, applyBrightness(colorMinorTick3));
-            break;
-        }
-      }
-      else if(level > 2){
-        ledStrip.setPixelColor(i, applyBrightness(colorSet3));
-      }
-      else{
-        switch(level){
-          case 0:
-//            if(i+1 == 20)
-//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-//            else 
-              ledStrip.setPixelColor(i, applyBrightness(colorOff));
-            break;
-          case 1:
-//            if(i+31 == 55)
-//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-//            else 
-              ledStrip.setPixelColor(i, applyBrightness(colorOff));
-            break;
-          case 2:
-//            if(i+61 == 70)
-//              ledStrip.setPixelColor(i, applyBrightness(colorSpecial));
-//            else 
-              ledStrip.setPixelColor(i, applyBrightness(colorOff));
-            break;
-        }
-      }
+//  Serial.print(digits); Serial.print(" digits: ");
+
+  if(speed == 0){
+    displayDigit(0,0,false);
+  }
+  else{
+    int digits = log10(speed) + 1;
+    for(int i=0; i<digits; i++){
+      int digit = (int)(speed/(pow(10,i)) ) % 10;
+  //    Serial.print(digit); Serial.print(" - ");
+      displayDigit(digit, i, false);
     }
   }
-  ledStrip.show();
-}
 
-uint32_t applyBrightness(color_t col){
-  float k = col.alpha/255.0 * brightness;
-  uint8_t r = col.red * k;
-//  if(col.red > 0 && r == 0) r = 1;
-  uint8_t g = col.green * k;
-//  if(col.green > 0 && g == 0) g = 1;
-  uint8_t b = col.blue * k;
-//  if(col.blue > 0 && b == 0) b = 1;
 
-//  Serial.print("r: "); Serial.print(r);
-//  Serial.print(", g: "); Serial.print(g);
-//  Serial.print(", b: "); Serial.print(b);
 //  Serial.println();
-  
-  
-  return ledStrip.Color(r, g, b);
+ 
 }
+
+
+void displayDigit(int digit, int place, bool dp){
+
+//  Serial.print("Displaying digit "); Serial.print(digit); Serial.print(" in place "); Serial.println(place);
+  resetDisplay();
+  switch(digit){
+    case 0:
+      digitalWrite(A_PIN, HIGH);
+      digitalWrite(B_PIN, HIGH);
+      digitalWrite(C_PIN, HIGH);
+      digitalWrite(D_PIN, HIGH);
+      digitalWrite(E_PIN, HIGH);
+      digitalWrite(F_PIN, HIGH);
+      digitalWrite(G_PIN, LOW);
+      digitalWrite(DP_PIN, LOW);
+      break;
+    case 1:
+      digitalWrite(A_PIN, LOW);
+      digitalWrite(B_PIN, HIGH);
+      digitalWrite(C_PIN, HIGH);
+      digitalWrite(D_PIN, LOW);
+      digitalWrite(E_PIN, LOW);
+      digitalWrite(F_PIN, LOW);
+      digitalWrite(G_PIN, LOW);
+      digitalWrite(DP_PIN, LOW);
+      break;
+    case 2:
+      digitalWrite(A_PIN, HIGH);
+      digitalWrite(B_PIN, HIGH);
+      digitalWrite(C_PIN, LOW);
+      digitalWrite(D_PIN, HIGH);
+      digitalWrite(E_PIN, HIGH);
+      digitalWrite(F_PIN, LOW);
+      digitalWrite(G_PIN, HIGH);
+      digitalWrite(DP_PIN, LOW);
+      break;
+    case 3:
+      digitalWrite(A_PIN, HIGH);
+      digitalWrite(B_PIN, HIGH);
+      digitalWrite(C_PIN, HIGH);
+      digitalWrite(D_PIN, HIGH);
+      digitalWrite(E_PIN, LOW);
+      digitalWrite(F_PIN, LOW);
+      digitalWrite(G_PIN, HIGH);
+      digitalWrite(DP_PIN, LOW);
+      break;
+    case 4:
+      digitalWrite(A_PIN, LOW);
+      digitalWrite(B_PIN, HIGH);
+      digitalWrite(C_PIN, HIGH);
+      digitalWrite(D_PIN, LOW);
+      digitalWrite(E_PIN, LOW);
+      digitalWrite(F_PIN, HIGH);
+      digitalWrite(G_PIN, HIGH);
+      digitalWrite(DP_PIN, LOW);
+      break;
+    case 5:
+      digitalWrite(A_PIN, HIGH);
+      digitalWrite(B_PIN, LOW);
+      digitalWrite(C_PIN, HIGH);
+      digitalWrite(D_PIN, HIGH);
+      digitalWrite(E_PIN, LOW);
+      digitalWrite(F_PIN, HIGH);
+      digitalWrite(G_PIN, HIGH);
+      digitalWrite(DP_PIN, LOW);
+      break;
+    case 6:
+      digitalWrite(A_PIN, HIGH);
+      digitalWrite(B_PIN, LOW);
+      digitalWrite(C_PIN, HIGH);
+      digitalWrite(D_PIN, HIGH);
+      digitalWrite(E_PIN, HIGH);
+      digitalWrite(F_PIN, HIGH);
+      digitalWrite(G_PIN, HIGH);
+      digitalWrite(DP_PIN, LOW);
+      break;
+    case 7:
+      digitalWrite(A_PIN, HIGH);
+      digitalWrite(B_PIN, HIGH);
+      digitalWrite(C_PIN, HIGH);
+      digitalWrite(D_PIN, LOW);
+      digitalWrite(E_PIN, LOW);
+      digitalWrite(F_PIN, LOW);
+      digitalWrite(G_PIN, LOW);
+      digitalWrite(DP_PIN, LOW);
+      break;
+    case 8:
+      digitalWrite(A_PIN, HIGH);
+      digitalWrite(B_PIN, HIGH);
+      digitalWrite(C_PIN, HIGH);
+      digitalWrite(D_PIN, HIGH);
+      digitalWrite(E_PIN, HIGH);
+      digitalWrite(F_PIN, HIGH);
+      digitalWrite(G_PIN, HIGH);
+      digitalWrite(DP_PIN, LOW);
+      break;
+    case 9:
+      digitalWrite(A_PIN, HIGH);
+      digitalWrite(B_PIN, HIGH);
+      digitalWrite(C_PIN, HIGH);
+      digitalWrite(D_PIN, LOW);
+      digitalWrite(E_PIN, LOW);
+      digitalWrite(F_PIN, HIGH);
+      digitalWrite(G_PIN, HIGH);
+      digitalWrite(DP_PIN, LOW);
+      break;
+  }
+  
+  if(dp) digitalWrite(DP_PIN, HIGH);
+
+  switch(place){
+    case 0:
+      digitalWrite(DIGIT_1_PIN, LOW);
+      digitalWrite(DIGIT_2_PIN, HIGH);
+      digitalWrite(DIGIT_3_PIN, HIGH);
+      digitalWrite(DIGIT_4_PIN, HIGH);
+      break;
+    case 1:
+      digitalWrite(DIGIT_1_PIN, HIGH);
+      digitalWrite(DIGIT_2_PIN, LOW);
+      digitalWrite(DIGIT_3_PIN, HIGH);
+      digitalWrite(DIGIT_4_PIN, HIGH);
+      break;
+    case 2:
+      digitalWrite(DIGIT_1_PIN, HIGH);
+      digitalWrite(DIGIT_2_PIN, HIGH);
+      digitalWrite(DIGIT_3_PIN, LOW);
+      digitalWrite(DIGIT_4_PIN, HIGH);
+      break;
+    case 3:
+      digitalWrite(DIGIT_1_PIN, HIGH);
+      digitalWrite(DIGIT_2_PIN, HIGH);
+      digitalWrite(DIGIT_3_PIN, HIGH);
+      digitalWrite(DIGIT_4_PIN, LOW);
+      break;
+  }
+}
+
+void resetDisplay(){
+    digitalWrite(DIGIT_1_PIN, HIGH);
+    digitalWrite(DIGIT_2_PIN, HIGH);
+    digitalWrite(DIGIT_3_PIN, HIGH);
+    digitalWrite(DIGIT_4_PIN, HIGH);
+    
+    digitalWrite(A_PIN, LOW);
+    digitalWrite(B_PIN, LOW);
+    digitalWrite(C_PIN, LOW);
+    digitalWrite(D_PIN, LOW);
+    digitalWrite(E_PIN, LOW);
+    digitalWrite(F_PIN, LOW);
+    digitalWrite(G_PIN, LOW);
+    digitalWrite(DP_PIN, LOW);
+}
+
 
 int getSpeedSerial(){
   String str = "";
@@ -276,26 +299,22 @@ int getSpeedSerial(){
 }
 
 int getSpeedOBD(){
-  int val = 0;
-  if (obd.readPID(PID_SPEED, val)) {
-    // light on LED on Arduino board when the RPM exceeds 3000
-    return val;
-  }
-  return 0;
-}
+  int val = -20;
 
-bool isMajorTick(int led){
-  for(int i=0; i<tickCount; i++){
-    if(led == majorTicks[i]) return true;
+  if(waitingForData){
+      byte pid = PID_SPEED;
+      if(obd.getResult(pid, val)){
+//      if(obd.getResultNoBlock(pid, val)){
+        waitingForData = false;
+//        return val;
+           return 55;
+      }
   }
-  return false;
-}
-
-bool isMinorTick(int led){
-  for(int i=0; i<tickCount; i++){
-    if(led == minorTicks[i]) return true;
+  else{
+    obd.readPIDAsync(PID_SPEED);
+    waitingForData = true;
   }
-  return false;
+  return -10;
 }
 
 void incBrightness(){
