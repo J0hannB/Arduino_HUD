@@ -1,6 +1,6 @@
 #include <OBD2UART.h>
 
-//#define TEST
+#define TEST
 
 #define DIGIT_1_PIN 6
 //#define DIGIT_2_PIN 8
@@ -38,6 +38,7 @@
 int speedVar = 8888;
 float brightness = 0.1;
 bool waitingForData = false;
+int failCount = 0;
 
 COBD obd;
 
@@ -71,14 +72,19 @@ void setup(){
   }
   resetDisplay();
 
+//  Serial.println("beginning...");
+
 #ifndef TEST
   obd.begin();
 #endif
+
+//  Serial.println("initializing...");
  
 #ifndef TEST
   while (!obd.init());
 #endif
 
+//  Serial.println("Done");
   pinMode(BTN_BRIGHTER, INPUT_PULLUP);
   pinMode(BTN_DIMMER, INPUT_PULLUP);
   delay(500);
@@ -303,29 +309,50 @@ int getSpeedOBD(){
 
   if(waitingForData){
       byte pid = PID_SPEED;
-      if(obd.getResult(pid, val)){
-//      if(obd.getResultNoBlock(pid, val)){
+//      if(obd.getResult(pid, val)){
+      if(obd.getResultNoBlock(pid, val)){
         waitingForData = false;
-//        return val;
-           return 55;
+//        Serial.print("Recieved Data: "); Serial.println(val);
+        return val;
+//           return 55;
+      }
+      else{
+        failCount++;
+        if(failCount > 100){
+          waitingForData = false;
+          failCount = 0;
+        }
       }
   }
   else{
     obd.readPIDAsync(PID_SPEED);
     waitingForData = true;
+
+      
+
+//      if(obd.readPID(PID_SPEED, val)){
+//
+//        Serial.print("read from obd port: "); Serial.println(val);
+//        return val;
+//      }
+
+//      Serial.println("Read failed");
+      
   }
   return -10;
 }
 
 void incBrightness(){
-  brightness  = min(1, brightness*1.2);
+//  brightness  = min(1, brightness*1.2);
+  brightness += 0.2;
 #ifdef TEST
   Serial.print("inc-ing brightness to "); Serial.println(brightness, 5);
 #endif
 }
 
 void decBrightness(){
-  brightness  = max(0, brightness/1.2);
+//  brightness  = max(0, brightness/1.2);
+  brightness -= 0.2;
 #ifdef TEST
   Serial.print("dec-ing brightness to "); Serial.println(brightness, 5);
 #endif
