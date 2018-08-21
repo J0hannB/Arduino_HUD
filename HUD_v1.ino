@@ -1,4 +1,9 @@
 #include <OBD2UART.h>
+#include <Adafruit_NeoPixel.h>
+#ifdef __AVR__
+  #include <avr/power.h>
+#endif
+
 
 //#define TEST
 
@@ -30,17 +35,31 @@
 #define G_PIN 5
 #define DP_PIN A3
 
+#define LED_STRIP1_PIN A0
+#define LED_STRIP2_PIN 13
+
   
 //#define LED_PIN 9
 #define BTN_BRIGHTER 2
 #define BTN_DIMMER 3
 
 int speedVar = 8888;
+int fuelVar = 7777;
+int rpmVar = 9999;
+
 float brightness = 0.1;
 bool waitingForData = false;
 int failCount = 0;
 
+enum dataTypes {
+  TYPE_SPEED,
+  TYPE_FUEL,
+  TYPE_RPM
+} toReadNext = TYPE_SPEED;
+
 COBD obd;
+Adafruit_NeoPixel strip1 = Adafruit_NeoPixel(30, LED_STRIP1_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip2 = Adafruit_NeoPixel(30, LED_STRIP2_PIN, NEO_GRB + NEO_KHZ800);
 
 
 
@@ -64,6 +83,9 @@ void setup(){
   pinMode(G_PIN, OUTPUT);
   pinMode(DP_PIN, OUTPUT);
   
+  pinMode(LED_STRIP1_PIN, OUTPUT);
+  pinMode(LED_STRIP2_PIN, OUTPUT);
+  
   for(int i=4000; i>0; i--){
     displayDigit(0,0,false);
     displayDigit(0,1,false);
@@ -78,11 +100,18 @@ void setup(){
   obd.begin();
 #endif
 
+  strip1.begin();
+  strip2.begin();
+
+  strip1.show();
+  strip2.show();
+
 //  Serial.println("initializing...");
  
 #ifndef TEST
   while (!obd.init());
 #endif
+
 
 //  Serial.println("Done");
   pinMode(BTN_BRIGHTER, INPUT_PULLUP);
@@ -96,16 +125,22 @@ void setup(){
 
 void loop() {
   
-#ifdef TEST
-    int temp = getSpeedSerial();
-#else
-    int temp = getSpeedOBD() / 1.60934;
-#endif
+//#ifdef TEST
+//    int temp = getSpeedSerial();
+//#else
+//    int temp = getSpeedOBD() / 1.60934;
+//#endif
+//
+//    if(temp >= 0){
+//      speedVar = temp;
+//    }
 
-    if(temp >= 0){
-      speedVar = temp;
-    }
-    setSpeed(speedVar);
+    updateOBDValues();
+//    setSpeed(speedVar);
+    setSpeed(fuelVar);
+//    setSpeed(rpmVar);
+
+    
     delayMicroseconds(150);
     resetDisplay();
 
@@ -304,43 +339,122 @@ int getSpeedSerial(){
   }
 }
 
-int getSpeedOBD(){
-  int val = -20;
-
+void updateOBDValues(){
+  int val = -10;
+  byte pid;
   if(waitingForData){
-      byte pid = PID_SPEED;
-//      if(obd.getResult(pid, val)){
-      if(obd.getResultNoBlock(pid, val)){
-        waitingForData = false;
-//        Serial.print("Recieved Data: "); Serial.println(val);
-        return val;
-//           return 55;
-      }
-      else{
-        failCount++;
-        if(failCount > 100){
+    switch(toReadNext){
+      case TYPE_SPEED:
+        pid = PID_SPEED;
+        if(obd.getResultNoBlock(pid, val)){
           waitingForData = false;
-          failCount = 0;
+          toReadNext = TYPE_FUEL;
+  //        Serial.print("Recieved Data: "); Serial.println(val);
+          speedVar = val;
         }
-      }
-  }
-  else{
-    obd.readPIDAsync(PID_SPEED);
-    waitingForData = true;
+        else{
+          failCount++;
+          if(failCount > 100){
+            waitingForData = false;
+            toReadNext = TYPE_FUEL;
+            failCount = 0;
+          }
+        }
+        break;
+
+      case TYPE_FUEL:
+        pid = PID_THROTTLE;
+        if(obd.getResultNoBlock(pid, val)){
+          waitingForData = false;
+          toReadNext = TYPE_RPM;
+  //        Serial.print("Recieved Data: "); Serial.println(val);
+          fuelVar = val;
+        }
+        else{
+          failCount++;
+          if(failCount > 100){
+            waitingForData = false;
+            toReadNext = TYPE_RPM;
+            failCount = 0;
+          }
+        }
+        break;
 
       
+      case TYPE_RPM:
+        pid = PID_RPM;
+        if(obd.getResultNoBlock(pid, val)){
+          waitingForData = false;
+          toReadNext = TYPE_SPEED;
+  //        Serial.print("Recieved Data: "); Serial.println(val);
+          rpmVar = val;
+        }
+        else{
+          failCount++;
+          if(failCount > 100){
+            waitingForData = false;
+            toReadNext = TYPE_SPEED;
+            failCount = 0;
+          }
+        }
+        break;
+    }
 
-//      if(obd.readPID(PID_SPEED, val)){
-//
-//        Serial.print("read from obd port: "); Serial.println(val);
-//        return val;
-//      }
-
-//      Serial.println("Read failed");
+  }
+  else{
+    switch(toReadNext){
+      case TYPE_SPEED:
+        obd.readPIDAsync(PID_SPEED);
+        waitingForData = true;
+        break;
+      case TYPE_FUEL:
+        obd.readPIDAsync(PID_THROTTLE);
+        waitingForData = true;
+        break;
+      case TYPE_RPM:
+        obd.readPIDAsync(PID_RPM);
+        waitingForData = true;
+        break;
+    }
       
   }
   return -10;
+  
 }
+
+//int getFuelLevel(){
+//  
+//}
+//
+//int getThrottle(){
+//  
+//}
+//
+//int getSpeedOBD(){
+//  int val = -20;
+//
+//  if(waitingForData){
+//      byte pid = PID_SPEED;
+//      if(obd.getResultNoBlock(pid, val)){
+//        waitingForData = false;
+////        Serial.print("Recieved Data: "); Serial.println(val);
+//        return val;
+//      }
+//      else{
+//        failCount++;
+//        if(failCount > 100){
+//          waitingForData = false;
+//          failCount = 0;
+//        }
+//      }
+//  }
+//  else{
+//    obd.readPIDAsync(PID_SPEED);
+//    waitingForData = true;
+//      
+//  }
+//  return -10;
+//}
 
 void incBrightness(){
 //  brightness  = min(1, brightness*1.2);
