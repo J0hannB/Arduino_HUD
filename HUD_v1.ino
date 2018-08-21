@@ -1,6 +1,6 @@
 #include <OBD2UART.h>
 
-#define TEST
+//#define TEST
 
 #define DIGIT_1_PIN 6
 //#define DIGIT_2_PIN 8
