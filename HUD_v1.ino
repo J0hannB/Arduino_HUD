@@ -35,8 +35,8 @@
 #define G_PIN 5
 #define DP_PIN A3
 
-#define LED_STRIP1_PIN A0
-#define LED_STRIP2_PIN 13
+#define LED_STRIP1_PIN A4
+#define LED_STRIP2_PIN A5
 
   
 //#define LED_PIN 9
@@ -44,8 +44,11 @@
 #define BTN_DIMMER 3
 
 int speedVar = 8888;
-int fuelVar = 7777;
-int rpmVar = 9999;
+int throttleVar = 0;
+int rpmVar = 0;
+
+int maxThrottle = 100;
+int maxRPM = 7000;
 
 float brightness = 0.1;
 bool waitingForData = false;
@@ -53,7 +56,7 @@ int failCount = 0;
 
 enum dataTypes {
   TYPE_SPEED,
-  TYPE_FUEL,
+  TYPE_THROTTLE,
   TYPE_RPM
 } toReadNext = TYPE_SPEED;
 
@@ -136,10 +139,9 @@ void loop() {
 //    }
 
     updateOBDValues();
-//    setSpeed(speedVar);
-    setSpeed(fuelVar);
-//    setSpeed(rpmVar);
-
+    setSpeed(speedVar);
+    setThrottle(throttleVar);
+    setRPM(rpmVar);
     
     delayMicroseconds(150);
     resetDisplay();
@@ -158,14 +160,15 @@ void setSpeed(int speed){
     int digits = log10(speed) + 1;
     for(int i=0; i<digits; i++){
       int digit = (int)(speed/(pow(10,i)) ) % 10;
-  //    Serial.print(digit); Serial.print(" - ");
       displayDigit(digit, i, false);
     }
   }
+}
 
-
-//  Serial.println();
- 
+void setThrottle(int throttle){
+  for(int i=0; i<strip1.numPixels(); i++){
+    
+  }
 }
 
 
@@ -348,7 +351,7 @@ void updateOBDValues(){
         pid = PID_SPEED;
         if(obd.getResultNoBlock(pid, val)){
           waitingForData = false;
-          toReadNext = TYPE_FUEL;
+          toReadNext = TYPE_THROTTLE;
   //        Serial.print("Recieved Data: "); Serial.println(val);
           speedVar = val;
         }
@@ -356,19 +359,19 @@ void updateOBDValues(){
           failCount++;
           if(failCount > 100){
             waitingForData = false;
-            toReadNext = TYPE_FUEL;
+            toReadNext = TYPE_THROTTLE;
             failCount = 0;
           }
         }
         break;
 
-      case TYPE_FUEL:
+      case TYPE_THROTTLE:
         pid = PID_THROTTLE;
         if(obd.getResultNoBlock(pid, val)){
           waitingForData = false;
           toReadNext = TYPE_RPM;
   //        Serial.print("Recieved Data: "); Serial.println(val);
-          fuelVar = val;
+          throttleVar = val;
         }
         else{
           failCount++;
@@ -407,7 +410,7 @@ void updateOBDValues(){
         obd.readPIDAsync(PID_SPEED);
         waitingForData = true;
         break;
-      case TYPE_FUEL:
+      case TYPE_THROTTLE:
         obd.readPIDAsync(PID_THROTTLE);
         waitingForData = true;
         break;
@@ -422,39 +425,6 @@ void updateOBDValues(){
   
 }
 
-//int getFuelLevel(){
-//  
-//}
-//
-//int getThrottle(){
-//  
-//}
-//
-//int getSpeedOBD(){
-//  int val = -20;
-//
-//  if(waitingForData){
-//      byte pid = PID_SPEED;
-//      if(obd.getResultNoBlock(pid, val)){
-//        waitingForData = false;
-////        Serial.print("Recieved Data: "); Serial.println(val);
-//        return val;
-//      }
-//      else{
-//        failCount++;
-//        if(failCount > 100){
-//          waitingForData = false;
-//          failCount = 0;
-//        }
-//      }
-//  }
-//  else{
-//    obd.readPIDAsync(PID_SPEED);
-//    waitingForData = true;
-//      
-//  }
-//  return -10;
-//}
 
 void incBrightness(){
 //  brightness  = min(1, brightness*1.2);
