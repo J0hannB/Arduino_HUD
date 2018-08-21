@@ -60,9 +60,27 @@ enum dataTypes {
   TYPE_RPM
 } toReadNext = TYPE_SPEED;
 
+struct color_t {
+  uint8_t red;
+  uint8_t green;
+  uint8_t blue;
+  uint8_t alpha;
+  color_t(uint8_t r, uint8_t g, uint8_t b, uint8_t a){
+    red = r;
+    green = g;
+    blue = b;
+    alpha = a;
+  }
+};
+
+color_t color_rpm_low(255,255,255,255);
+color_t color_rpm_mid(255,255,0,255);
+color_t color_rpm_high(255,0,0,255);
+color_t color_off(0,0,0,0);
+
 COBD obd;
-Adafruit_NeoPixel strip1 = Adafruit_NeoPixel(30, LED_STRIP1_PIN, NEO_GRB + NEO_KHZ800);
-Adafruit_NeoPixel strip2 = Adafruit_NeoPixel(30, LED_STRIP2_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip1 = Adafruit_NeoPixel(15, LED_STRIP1_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip2 = Adafruit_NeoPixel(15, LED_STRIP2_PIN, NEO_GRB + NEO_KHZ800);
 
 
 
@@ -146,7 +164,9 @@ void loop() {
     delayMicroseconds(150);
     resetDisplay();
 
-    delayMicroseconds(100/brightness);
+    int toDelay = (float)100/brightness;
+    if(toDelay >= 1000) delay(toDelay/1000);
+    else delayMicroseconds(toDelay);
 }
 
 void setSpeed(int speed){
@@ -167,10 +187,38 @@ void setSpeed(int speed){
 
 void setThrottle(int throttle){
   for(int i=0; i<strip1.numPixels(); i++){
-    
+     if(i > ((float)throttle/maxThrottle)*strip1.numPixels()){
+        strip1.setPixelColor(i, applyBrightness(color_off));
+     }
+     else {
+        int green = 255*((float)i/strip1.numPixels());
+        int blue = max(green-127, 0);
+        color_t col(255, green, blue, 255);
+        strip1.setPixelColor(i, applyBrightness(col));
+     }
   }
+  strip1.show();
 }
 
+
+void setRPM(int rpm){
+  for(int i=0; i<strip2.numPixels(); i++){
+     if(i > ((float)rpm/maxRPM)*strip2.numPixels()){
+        strip2.setPixelColor(i, applyBrightness(color_off));
+     }
+     else if(i > 10){
+        strip2.setPixelColor(i, applyBrightness(color_rpm_high));
+     }
+     else if(i > 6){
+        strip2.setPixelColor(i, applyBrightness(color_rpm_mid));
+     }
+     else{
+        strip2.setPixelColor(i, applyBrightness(color_rpm_low));
+     }
+  }
+  strip2.show();
+  
+}
 
 void displayDigit(int digit, int place, bool dp){
 
@@ -335,6 +383,7 @@ int getSpeedSerial(){
   }
 
   if(sizeof(str) > 0){
+    Serial.print("Setting speed to "); Serial.println(str.toInt());
     return str.toInt();
   }
   else {
@@ -343,6 +392,14 @@ int getSpeedSerial(){
 }
 
 void updateOBDValues(){
+
+#ifdef TEST
+  if(Serial.available()){
+    int temp = getSpeedSerial();
+//    if(temp > 0)
+      speedVar = throttleVar = rpmVar = temp;
+  }
+#else
   int val = -10;
   byte pid;
   if(waitingForData){
@@ -422,21 +479,39 @@ void updateOBDValues(){
       
   }
   return -10;
+#endif
   
 }
 
+uint32_t applyBrightness(color_t col){
+  float k = col.alpha/255.0 * brightness;
+  uint8_t r = col.red * k;
+//  if(col.red > 0 && r == 0) r = 1;
+  uint8_t g = col.green * k;
+//  if(col.green > 0 && g == 0) g = 1;
+  uint8_t b = col.blue * k;
+//  if(col.blue > 0 && b == 0) b = 1;
+
+//  Serial.print("r: "); Serial.print(r);
+//  Serial.print(", g: "); Serial.print(g);
+//  Serial.print(", b: "); Serial.print(b);
+//  Serial.println();
+  
+  
+  return strip1.Color(r, g, b);
+}
 
 void incBrightness(){
-//  brightness  = min(1, brightness*1.2);
-  brightness += 0.2;
+  brightness  = min(1, brightness*1.2);
+//  brightness += 0.2;
 #ifdef TEST
   Serial.print("inc-ing brightness to "); Serial.println(brightness, 5);
 #endif
 }
 
 void decBrightness(){
-//  brightness  = max(0, brightness/1.2);
-  brightness -= 0.2;
+  brightness  = max(0, brightness/1.2);
+//  brightness -= 0.2;
 #ifdef TEST
   Serial.print("dec-ing brightness to "); Serial.println(brightness, 5);
 #endif
