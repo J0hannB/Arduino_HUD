@@ -1,9 +1,10 @@
 #include <OBD2UART.h>
 #include <Adafruit_NeoPixel.h>
+#include <elapsedMillis.h>
+#include "TimerOne.h"
 #ifdef __AVR__
   #include <avr/power.h>
 #endif
-
 
 //#define TEST
 
@@ -43,16 +44,20 @@
 #define BTN_BRIGHTER 2
 #define BTN_DIMMER 3
 
-int speedVar = 8888;
-int throttleVar = 0;
-int rpmVar = 0;
-
-int maxThrottle = 100;
+int maxThrottle = 80; //100;
 int maxRPM = 7000;
+int max7SegmentPeriod = 4000;
+
+volatile int speedVar = 8888;
+int throttleVar = maxThrottle;
+int rpmVar = maxRPM;
+int dispPeriod = max7SegmentPeriod;
 
 float brightness = 0.1;
 bool waitingForData = false;
 int failCount = 0;
+int lastDigiDelayUs = 500;
+bool displaySet = false;
 
 enum dataTypes {
   TYPE_SPEED,
@@ -73,8 +78,8 @@ struct color_t {
   }
 };
 
-color_t color_rpm_low(255,255,255,255);
-color_t color_rpm_mid(255,255,0,255);
+color_t color_rpm_low(255,128,64,255);
+color_t color_rpm_mid(255,128,0,255);
 color_t color_rpm_high(255,0,0,255);
 color_t color_off(0,0,0,0);
 
@@ -140,8 +145,9 @@ void setup(){
   delay(500);
   attachInterrupt(digitalPinToInterrupt(BTN_BRIGHTER), incBrightness, FALLING);
   attachInterrupt(digitalPinToInterrupt(BTN_DIMMER), decBrightness, FALLING);
-
- 
+  
+  Timer1.initialize();
+  Timer1.attachInterrupt(updateDisplay, dispPeriod);
 }
 
 void loop() {
@@ -156,17 +162,20 @@ void loop() {
 //      speedVar = temp;
 //    }
 
-    updateOBDValues();
-    setSpeed(speedVar);
-    setThrottle(throttleVar);
-    setRPM(rpmVar);
-    
-    delayMicroseconds(150);
-    resetDisplay();
 
-    int toDelay = (float)100/brightness;
-    if(toDelay >= 1000) delay(toDelay/1000);
-    else delayMicroseconds(toDelay);
+    int timeSinceInterrupt = Timer1.read();
+    Timer1.detachInterrupt();
+    delay(5);
+    updateOBDValues();
+    Timer1.attachInterrupt(updateDisplay, dispPeriod-timeSinceInterrupt);
+    
+    setThrottle(throttleVar);
+    setRPM(rpmVar);    
+
+//    int toDelay = (float)100/brightness;
+//    if(toDelay >= 1000) delay(toDelay/1000);
+//    else delayMicroseconds(toDelay);
+    
 }
 
 void setSpeed(int speed){
@@ -177,7 +186,9 @@ void setSpeed(int speed){
     displayDigit(0,0,false);
   }
   else{
-    int digits = log10(speed) + 1;
+//    int digits = log10(speed) + 1;
+    int digits = speed > 9 ? 2 : 1; 
+    
     for(int i=0; i<digits; i++){
       int digit = (int)(speed/(pow(10,i)) ) % 10;
       displayDigit(digit, i, false);
@@ -223,7 +234,7 @@ void setRPM(int rpm){
 void displayDigit(int digit, int place, bool dp){
 
 //  Serial.print("Displaying digit "); Serial.print(digit); Serial.print(" in place "); Serial.println(place);
-  resetDisplay();
+//  resetDisplay();
   switch(digit){
     case 0:
       digitalWrite(A_PIN, HIGH);
@@ -373,14 +384,35 @@ void resetDisplay(){
     digitalWrite(DP_PIN, LOW);
 }
 
+void updateDisplay(){
+  
+  resetDisplay();
+  setSpeed(speedVar);
+  elapsedMicros delayTime = 0;
+  delayMicroseconds(100);
+  resetDisplay();
+
+  Timer1.setPeriod(dispPeriod);
+
+//  int toWait = 2000000/dispPeriod;
+//  toWait = max(toWait, 20);
+//
+//  while(delayTime < toWait);
+}
+
 
 int getSpeedSerial(){
   String str = "";
+  int timeSinceInterrupt = Timer1.read();
+  Timer1.detachInterrupt();
   while(Serial.available()){
     char c = Serial.read();
     if(c == '\n') break;
     str += c;
+    delay(1 );
   }
+  
+  Timer1.attachInterrupt(updateDisplay, dispPeriod-timeSinceInterrupt);
 
   if(sizeof(str) > 0){
     Serial.print("Setting speed to "); Serial.println(str.toInt());
@@ -396,23 +428,23 @@ void updateOBDValues(){
 #ifdef TEST
   if(Serial.available()){
     int temp = getSpeedSerial();
-//    if(temp > 0)
-      speedVar = throttleVar = rpmVar = temp;
+//  if(temp > 0)
+        speedVar = throttleVar = rpmVar = temp;
   }
 #else
   int val = -10;
   byte pid;
   if(waitingForData){
+    pid = PID_SPEED;
     switch(toReadNext){
       case TYPE_SPEED:
-        pid = PID_SPEED;
-        if(obd.getResultNoBlock(pid, val)){
+        if(obd.getResultNoBlock(pid, val)){\
           waitingForData = false;
           toReadNext = TYPE_THROTTLE;
   //        Serial.print("Recieved Data: "); Serial.println(val);
-          speedVar = val;
+          speedVar = val / 1.60934;
         }
-        else{
+        else{\
           failCount++;
           if(failCount > 100){
             waitingForData = false;
@@ -503,7 +535,7 @@ uint32_t applyBrightness(color_t col){
 
 void incBrightness(){
   brightness  = min(1, brightness*1.2);
-//  brightness += 0.2;
+  dispPeriod = max(max7SegmentPeriod, 250.0/brightness);
 #ifdef TEST
   Serial.print("inc-ing brightness to "); Serial.println(brightness, 5);
 #endif
@@ -511,6 +543,7 @@ void incBrightness(){
 
 void decBrightness(){
   brightness  = max(0, brightness/1.2);
+  dispPeriod = max(max7SegmentPeriod, 250.0/brightness);
 //  brightness -= 0.2;
 #ifdef TEST
   Serial.print("dec-ing brightness to "); Serial.println(brightness, 5);
