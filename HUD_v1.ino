@@ -8,41 +8,48 @@
 
 //#define TEST
 
-#define DIGIT_1_PIN 6
+#define DIGIT_1_PIN 13
+#define DIGIT_2_PIN 2
+#define DIGIT_3_PIN 3
+#define DIGIT_4_PIN 4
+
+#define A_PIN 5
+#define B_PIN 6
+#define C_PIN 7
+#define D_PIN 8
+#define E_PIN 9
+#define F_PIN 10
+#define G_PIN 11
+#define DP_PIN 12
+
+
+#define LED_STRIP1_PIN 14
+#define LED_STRIP2_PIN 15
+
+#define BTN_BRIGHTER 16
+#define BTN_DIMMER 17
+
+//#define DIGIT_1_PIN 6
 //#define DIGIT_2_PIN 8
 //#define DIGIT_3_PIN 9
 //#define DIGIT_4_PIN 12
 //
-//#define A_PIN 11 A2
-//#define B_PIN 7
-//#define C_PIN 4
-//#define D_PIN A2
-//#define E_PIN A1
-//#define F_PIN 10
+//#define A_PIN A2
+//#define B_PIN 4
+//#define C_PIN 7
+//#define D_PIN 11
+//#define E_PIN 10
+//#define F_PIN A1
 //#define G_PIN 5
 //#define DP_PIN A3
 
-#define DIGIT_1_PIN 6
-#define DIGIT_2_PIN 8
-#define DIGIT_3_PIN 9
-#define DIGIT_4_PIN 12
-
-#define A_PIN A2
-#define B_PIN 4
-#define C_PIN 7
-#define D_PIN 11
-#define E_PIN 10
-#define F_PIN A1
-#define G_PIN 5
-#define DP_PIN A3
-
-#define LED_STRIP1_PIN A4
-#define LED_STRIP2_PIN A5
+// #define LED_STRIP1_PIN A4
+// #define LED_STRIP2_PIN A5
 
   
-//#define LED_PIN 9
-#define BTN_BRIGHTER 2
-#define BTN_DIMMER 3
+// //#define LED_PIN 9
+// #define BTN_BRIGHTER 2
+// #define BTN_DIMMER 3
 
 int maxThrottle = 80; //100;
 int maxRPM = 7000;
@@ -59,11 +66,17 @@ int failCount = 0;
 int lastDigiDelayUs = 500;
 bool displaySet = false;
 
+int updateIntervalUs = 400;
+int digitsToDisplay[3];
+int digitCount = 0;
+int currDigitIdx = 0;
+
 enum dataTypes {
   TYPE_SPEED,
   TYPE_THROTTLE,
   TYPE_RPM
 } toReadNext = TYPE_SPEED;
+
 
 struct color_t {
   uint8_t red;
@@ -86,6 +99,8 @@ color_t color_off(0,0,0,0);
 COBD obd;
 Adafruit_NeoPixel strip1 = Adafruit_NeoPixel(15, LED_STRIP1_PIN, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel strip2 = Adafruit_NeoPixel(15, LED_STRIP2_PIN, NEO_GRB + NEO_KHZ800);
+
+IntervalTimer timer1;
 
 
 
@@ -146,28 +161,27 @@ void setup(){
   attachInterrupt(digitalPinToInterrupt(BTN_BRIGHTER), incBrightness, FALLING);
   attachInterrupt(digitalPinToInterrupt(BTN_DIMMER), decBrightness, FALLING);
   
-  Timer1.initialize();
-  Timer1.attachInterrupt(updateDisplay, dispPeriod);
+  timer1.begin(updateDisplay, updateIntervalUs);
 }
 
 void loop() {
   
-//#ifdef TEST
+// #ifdef TEST
 //    int temp = getSpeedSerial();
-//#else
+// #else
 //    int temp = getSpeedOBD() / 1.60934;
-//#endif
-//
+// #endif
+// //
 //    if(temp >= 0){
 //      speedVar = temp;
 //    }
 
 
-    int timeSinceInterrupt = Timer1.read();
-    Timer1.detachInterrupt();
-    delay(5);
+    // int timeSinceInterrupt = Timer1.read();
+    // Timer1.detachInterrupt();
+    //delay(5);
     updateOBDValues();
-    Timer1.attachInterrupt(updateDisplay, dispPeriod-timeSinceInterrupt);
+    // Timer1.attachInterrupt(updateDisplay, dispPeriod-timeSinceInterrupt);
     
     setThrottle(throttleVar);
     setRPM(rpmVar);    
@@ -178,20 +192,26 @@ void loop() {
     
 }
 
-void setSpeed(int speed){
+void getDigitsToDisplay(int speed, int* digitArr){
 
 //  Serial.print(digits); Serial.print(" digits: ");
 
+  //digits.clear();
   if(speed == 0){
-    displayDigit(0,0,false);
+    //displayDigit(0,0,false);
+    digitArr[0] = 0;
+    digitCount = 1;
   }
   else{
 //    int digits = log10(speed) + 1;
     int digits = speed > 9 ? 2 : 1; 
-    
+    digitCount = 0;
     for(int i=0; i<digits; i++){
       int digit = (int)(speed/(pow(10,i)) ) % 10;
-      displayDigit(digit, i, false);
+      // displayDigit(digit, i, false);
+      // delayMicroseconds(digitTimeUs);
+      digitArr[i] = digit;
+      digitCount++;
     }
   }
 }
@@ -385,26 +405,32 @@ void resetDisplay(){
 }
 
 void updateDisplay(){
-  
-  resetDisplay();
-  setSpeed(speedVar);
-  elapsedMicros delayTime = 0;
-  delayMicroseconds(100);
-  resetDisplay();
 
-  Timer1.setPeriod(dispPeriod);
+  if(currDigitIdx > 1){
+    currDigitIdx = 0;
+  }
 
-//  int toWait = 2000000/dispPeriod;
-//  toWait = max(toWait, 20);
-//
-//  while(delayTime < toWait);
+  if(currDigitIdx == 0){
+    getDigitsToDisplay(speedVar, digitsToDisplay);
+    resetDisplay();
+
+  }
+
+  if(digitsToDisplay[0] < 0){
+    resetDisplay();
+  }
+  else{
+    int digit = digitsToDisplay[currDigitIdx];
+    displayDigit(digit, currDigitIdx, false);
+    currDigitIdx++;
+  }
 }
 
 
 int getSpeedSerial(){
   String str = "";
-  int timeSinceInterrupt = Timer1.read();
-  Timer1.detachInterrupt();
+  // int timeSinceInterrupt = Timer1.read();
+  // Timer1.detachInterrupt();
   while(Serial.available()){
     char c = Serial.read();
     if(c == '\n') break;
@@ -412,7 +438,7 @@ int getSpeedSerial(){
     delay(1 );
   }
   
-  Timer1.attachInterrupt(updateDisplay, dispPeriod-timeSinceInterrupt);
+  // Timer1.attachInterrupt(updateDisplay, dispPeriod-timeSinceInterrupt);
 
   if(sizeof(str) > 0){
     Serial.print("Setting speed to "); Serial.println(str.toInt());
@@ -444,7 +470,7 @@ void updateOBDValues(){
   //        Serial.print("Recieved Data: "); Serial.println(val);
           speedVar = val / 1.60934;
         }
-        else{\
+        else{
           failCount++;
           if(failCount > 100){
             waitingForData = false;
@@ -510,7 +536,7 @@ void updateOBDValues(){
     }
       
   }
-  return -10;
+//  return -10;
 #endif
   
 }
