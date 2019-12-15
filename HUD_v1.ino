@@ -6,6 +6,9 @@
   #include <avr/power.h>
 #endif
 
+// For Teensy
+#define OBDUART Serial1
+
 //#define TEST
 
 #define DIGIT_1_PIN 13
@@ -66,7 +69,7 @@ int failCount = 0;
 int lastDigiDelayUs = 500;
 bool displaySet = false;
 
-int updateIntervalUs = 400;
+int updateIntervalUs = 10000; //400;
 int digitsToDisplay[3];
 int digitCount = 0;
 int currDigitIdx = 0;
@@ -106,9 +109,9 @@ IntervalTimer timer1;
 
 void setup(){
   
-#ifdef TEST
-  Serial.begin(38400);
-#endif
+// #ifdef TEST
+  Serial.begin(115200);
+// #endif
 
   pinMode(DIGIT_1_PIN, OUTPUT);
   pinMode(DIGIT_2_PIN, OUTPUT);
@@ -135,7 +138,7 @@ void setup(){
   }
   resetDisplay();
 
-//  Serial.println("beginning...");
+ Serial.println("beginning...");
 
 #ifndef TEST
   obd.begin();
@@ -147,14 +150,14 @@ void setup(){
   strip1.show();
   strip2.show();
 
-//  Serial.println("initializing...");
+ Serial.println("initializing...");
  
 #ifndef TEST
   while (!obd.init());
 #endif
 
 
-//  Serial.println("Done");
+ Serial.println("Done");
   pinMode(BTN_BRIGHTER, INPUT_PULLUP);
   pinMode(BTN_DIMMER, INPUT_PULLUP);
   delay(500);
@@ -467,7 +470,7 @@ void updateOBDValues(){
         if(obd.getResultNoBlock(pid, val)){\
           waitingForData = false;
           toReadNext = TYPE_THROTTLE;
-  //        Serial.print("Recieved Data: "); Serial.println(val);
+         Serial.print("Recieved Data: "); Serial.println(val);
           speedVar = val / 1.60934;
         }
         else{
@@ -485,7 +488,7 @@ void updateOBDValues(){
         if(obd.getResultNoBlock(pid, val)){
           waitingForData = false;
           toReadNext = TYPE_RPM;
-  //        Serial.print("Recieved Data: "); Serial.println(val);
+         Serial.print("Recieved Data: "); Serial.println(val);
           throttleVar = val;
         }
         else{
@@ -504,7 +507,7 @@ void updateOBDValues(){
         if(obd.getResultNoBlock(pid, val)){
           waitingForData = false;
           toReadNext = TYPE_SPEED;
-  //        Serial.print("Recieved Data: "); Serial.println(val);
+         Serial.print("Recieved Data: "); Serial.println(val);
           rpmVar = val;
         }
         else{
